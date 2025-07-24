@@ -215,3 +215,92 @@ docker build -f build/Dockerfile -t wazum/openconnect-proxy:custom ./build
 # Support
 
 You like using my work? Get something for me (surprise! surprise!) from my wishlist on [Amazon](https://smile.amazon.de/hz/wishlist/ls/307SIOOD654GF/) or [help me pay](https://www.paypal.me/wazum) the next pizza or Pho soup (mjam). Thanks a lot!
+
+# Server Deployment Configuration
+
+When deploying on a server to provide proxy services for external machines, additional configuration is required:
+
+## 1. Modify Docker Port Binding
+Bind proxy ports to all network interfaces:
+
+```bash
+docker run -it --rm --privileged --env-file=.env \
+  -v $(pwd)/hipreport-sdsu.sh:/etc/hipreport-sdsu.sh:ro \
+  -p 0.0.0.0:8888:8888 -p 0.0.0.0:8889:8889 \
+  wazum/openconnect-proxy:latest
+```
+
+Or using Docker Compose:
+
+```yaml
+version: '3.8'
+services:
+  vpn:
+    container_name: openconnect_vpn
+    image: wazum/openconnect-proxy:latest
+    privileged: true
+    env_file:
+      - .env
+    ports:
+      - "0.0.0.0:8888:8888"
+      - "0.0.0.0:8889:8889"
+    cap_add:
+      - NET_ADMIN
+    restart: unless-stopped
+```
+
+## 2. Configure Server Firewall
+Open proxy ports:
+
+```bash
+# Ubuntu/Debian (ufw)
+sudo ufw allow 8888
+sudo ufw allow 8889
+
+# CentOS/RHEL (firewalld)
+sudo firewall-cmd --permanent --add-port=8888/tcp
+sudo firewall-cmd --permanent --add-port=8889/tcp
+sudo firewall-cmd --reload
+
+# Or using iptables
+sudo iptables -A INPUT -p tcp --dport 8888 -j ACCEPT
+sudo iptables -A INPUT -p tcp --dport 8889 -j ACCEPT
+```
+
+## 3. Client Configuration
+External machines can configure proxy as:
+- HTTP/HTTPS proxy: `server_ip:8888`
+- SOCKS5 proxy: `server_ip:8889`
+
+## 4. Test Connection
+Test from client machines:
+
+```bash
+# Test HTTP proxy
+curl -x "http://server_ip:8888" "https://ipinfo.io/json"
+
+# Test SOCKS5 proxy
+curl --socks5-hostname "server_ip:8889" "https://ipinfo.io/json"
+```
+
+## 5. Special iptables Configuration (if needed)
+
+In some server environments, additional iptables configuration may be required:
+
+```bash
+# 1) Get container IP
+CIP=$(docker inspect -f '{{range.NetworkSettings.Networks}}{{.IPAddress}}{{end}}' <container_id>)
+
+# 2) Configure SNAT
+sudo iptables -t nat -A POSTROUTING \
+  -p tcp -d "$CIP" --dport 8889 \
+  -j SNAT --to-source 172.17.0.1
+```
+
+**Note**: These iptables rules are usually not required. Only apply them if you experience network connectivity issues with external clients.
+
+## 6. Security Considerations
+- Consider implementing authentication mechanisms
+- Restrict allowed IP ranges in tinyproxy configuration
+- Use VPN or SSH tunnels for additional security
+- Monitor proxy usage regularly
