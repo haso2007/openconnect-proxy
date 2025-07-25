@@ -8,6 +8,7 @@ services:
       - .env.edu
     volumes:
       - ./hipreport-sdsu.sh:/etc/hipreport-sdsu.sh:ro
+      - ./fix-routes.sh:/usr/local/bin/fix-routes.sh:ro
     ports:
       - "0.0.0.0:10080:8888"
       - "0.0.0.0:10090:8889"
@@ -17,8 +18,10 @@ services:
     dns:
       - 8.8.8.8
       - 8.8.4.4
-    dns_opt:
-      - ndots:0
-    environment:
-      - VPN_SPLIT=0
-      - INTERNAL_IP4_DNS=8.8.8.8,8.8.4.4
+    network_mode: bridge
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: sh -c "/entrypoint.sh & sleep 30 && sh /usr/local/bin/fix-routes.sh; wait"
+
+
+
